@@ -84,6 +84,7 @@ async function handleMessage(topic, payloadBuf) {
   const parts = topic.split("/");
   const [, , kind, externalId, subtopic] = parts;
 
+
   if (subtopic === "lwt") {
     const online = payloadBuf.toString() === "online";
 
@@ -124,8 +125,8 @@ async function handleMessage(topic, payloadBuf) {
 
 async function handleAmbulanceTelemetry(externalId, payload) {
   const device = await findDevice(externalId);
-  if (!device || !device.ambulance_id) return;
-
+  if (!device || !device.ambulance_id)
+   return;
   const { data: activeEvent } = await supabase
     .from("emergency_events")
     .select("id")

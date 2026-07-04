@@ -1,0 +1,10 @@
+{
+  "name": "secapms-frontend",
+  "version": "1.1.0",
+  "private": true,
+  "description": "SECAPMS static dashboard - public portal + 5 role control rooms",
+  "scripts": {
+    "start": "npx serve . -l 5173",
+    "dev": "npx serve . -l 5173"
+  }
+}

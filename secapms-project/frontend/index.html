@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SECAPMS — Smart Emergency Corridor & Ambulance Priority Management System</title>
+<meta name="description" content="Live emergency corridors, ambulance priority routing, and hospital readiness — SECAPMS public and control portals." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg-deep:#0f1b3d;
+    --bg-surface:#1e3a5f;
+    --primary:#3b6fa0;
+    --fg:#e8edf3;
+    --red:#dc2626;
+    --green:#16a34a;
+    --amber:#f59e0b;
+    --line: rgba(232,237,243,0.10);
+    --line-strong: rgba(232,237,243,0.18);
+    --muted: rgba(232,237,243,0.58);
+    --muted-2: rgba(232,237,243,0.38);
+    --surface-2: #172c4d;
+    --radius: 6px;
+    --sora: 'Sora', system-ui, sans-serif;
+    --manrope: 'Manrope', system-ui, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg-deep);color:var(--fg);font-family:var(--manrope);}
+  body{overflow:hidden;}
+  a{color:inherit;}
+  ::selection{background:var(--primary);color:#fff;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:4px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible{
+    outline:2px solid var(--amber); outline-offset:2px; border-radius:4px;
+  }
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:.001ms !important; transition-duration:.001ms !important;} }
+  .content{animation:fadein .18s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(3px);} to{opacity:1; transform:translateY(0);}}
+
+  button{font-family:var(--manrope);cursor:pointer;}
+  .btn{
+    background:var(--primary); color:#fff; border:none; border-radius:var(--radius);
+    padding:9px 16px; font-size:13.5px; font-weight:600; letter-spacing:.01em;
+    transition:filter .15s ease, transform .1s ease;
+  }
+  .btn:hover{filter:brightness(1.12);}
+  .btn:active{transform:scale(.98);}
+  .btn.ghost{background:transparent;border:1px solid var(--line-strong);color:var(--fg);}
+  .btn.danger{background:var(--red);}
+  .btn.ok{background:var(--green);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;filter:none;}
+  .btn.sm{padding:6px 11px;font-size:12px;}
+
+  input,select,textarea{
+    background:var(--bg-deep); border:1px solid var(--line-strong); color:var(--fg);
+    border-radius:var(--radius); padding:8px 10px; font-family:var(--manrope); font-size:13.5px;
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--primary); outline-offset:1px;}
+
+  /* ---------- App shell ---------- */
+  #app{display:flex; height:100vh; width:100vw;}
+
+  .sidebar{
+    width:230px; min-width:230px; background:var(--bg-surface); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; height:100%;
+  }
+  .wordmark{
+    padding:20px 18px 14px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:2px;
+  }
+  .wordmark .mark{font-family:var(--sora); font-weight:800; font-size:19px; letter-spacing:.02em; display:flex; align-items:center; gap:8px;}
+  .wordmark .mark .dot{width:9px;height:9px;border-radius:50%;background:var(--green); box-shadow:0 0 0 3px rgba(22,163,74,.25);}
+  .wordmark .sub{font-size:10.5px; color:var(--muted-2); letter-spacing:.08em; text-transform:uppercase;}
+  .role-badge{
+    margin:12px 16px 6px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+    background:var(--surface-2); border:1px solid var(--line); padding:6px 10px; border-radius:var(--radius);
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .nav{flex:1; overflow-y:auto; padding:6px 10px;}
+  .nav a{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:var(--radius);
+    font-size:13.5px; color:var(--muted); text-decoration:none; margin-bottom:2px; border:1px solid transparent;
+  }
+  .nav a svg{width:16px;height:16px;flex-shrink:0;opacity:.8;}
+  .nav a.active{background:var(--surface-2); color:var(--fg); border-color:var(--line);}
+  .nav a:hover:not(.active){background:rgba(232,237,243,0.04); color:var(--fg);}
+  .nav .section-label{font-size:10px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted-2); padding:14px 10px 6px;}
+  .sidebar-foot{padding:12px 16px; border-top:1px solid var(--line); font-size:11.5px; color:var(--muted-2);}
+  .switch-role{padding:10px 16px 4px;}
+  .switch-role select{width:100%;}
+
+  .menu-btn{display:none; background:transparent; border:1px solid var(--line-strong); color:var(--fg); border-radius:6px; padding:6px 9px;}
+  .menu-btn svg{width:16px;height:16px; display:block;}
+  .sidebar-scrim{display:none;}
+  @media(max-width:880px){
+    .menu-btn{display:flex; align-items:center; justify-content:center;}
+    .sidebar{
+      position:fixed; left:0; top:0; bottom:0; z-index:1200; transform:translateX(-100%);
+      transition:transform .22s ease; box-shadow:20px 0 40px -20px rgba(0,0,0,.6);
+    }
+    .sidebar.open{transform:translateX(0);}
+    .sidebar-scrim.open{
+      display:block; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:1100;
+    }
+    .topstrip .left{display:none;}
+  }
+
+  .main-col{flex:1; display:flex; flex-direction:column; min-width:0; height:100%;}
+  .topstrip{
+    height:48px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;
+    padding:0 18px; background:linear-gradient(180deg, rgba(59,111,160,.08), transparent); flex-shrink:0;
+  }
+  .topstrip .left{display:flex; align-items:center; gap:16px; font-size:12.5px; color:var(--muted);}
+  .topstrip .pill{display:flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--line); border-radius:999px;}
+  .topstrip .pill .d{width:7px;height:7px;border-radius:50%;}
+  .topstrip .right{display:flex; align-items:center; gap:14px; font-size:12px; color:var(--muted-2);}
+
+  .bell-wrap{position:relative;}
+  .bell-btn{background:transparent; border:1px solid var(--line-strong); color:var(--fg); border-radius:6px; padding:6px 8px; position:relative; display:flex;}
+  .bell-btn svg{width:16px;height:16px;}
+  .bell-dot{position:absolute; top:-4px; right:-4px; width:15px;height:15px; border-radius:50%; background:var(--red); color:#fff;
+    font-size:9.5px; font-weight:700; display:flex; align-items:center; justify-content:center; border:2px solid var(--bg-deep);}
+  .bell-menu{
+    position:absolute; right:0; top:calc(100% + 8px); width:300px; max-height:340px; overflow-y:auto;
+    background:var(--bg-surface); border:1px solid var(--line-strong); border-radius:8px; box-shadow:0 20px 50px -15px rgba(0,0,0,.6);
+    z-index:1500; padding:6px;
+  }
+  .bell-menu .n-item{padding:9px 10px; border-radius:6px; font-size:12.5px;}
+  .bell-menu .n-item:hover{background:rgba(232,237,243,.05);}
+  .bell-menu .n-item .t{color:var(--muted-2); font-size:10.5px; margin-top:2px;}
+  .bell-menu .n-empty{padding:16px 10px; text-align:center; color:var(--muted-2); font-size:12px;}
+
+  .content{flex:1; overflow-y:auto; padding:22px 24px 60px;}
+  .page-head{display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; gap:16px; flex-wrap:wrap;}
+  .page-head h1{font-family:var(--sora); font-size:22px; margin:0 0 4px; font-weight:700;}
+  .page-head p{margin:0; font-size:13px; color:var(--muted); max-width:560px;}
+  .head-actions{display:flex; gap:8px; flex-shrink:0;}
+
+  .grid{display:grid; gap:14px;}
+  .cols-4{grid-template-columns:repeat(4,1fr);}
+  .cols-3{grid-template-columns:repeat(3,1fr);}
+  .cols-2{grid-template-columns:repeat(2,1fr);}
+  @media(max-width:1100px){.cols-4{grid-template-columns:repeat(2,1fr);} .cols-3{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:640px){.cols-4,.cols-3,.cols-2{grid-template-columns:1fr;} .content{padding:16px 14px 50px;} .page-head h1{font-size:19px;}}
+
+  .panel{
+    background:var(--bg-surface); border:1px solid var(--line); border-radius:8px; padding:16px 18px;
+  }
+  .panel h2, .panel h3{font-family:var(--sora); font-weight:700; margin:0 0 12px; font-size:14.5px; letter-spacing:.01em;
+    display:flex; align-items:center; justify-content:space-between;}
+  .panel h2 .tag, .panel h3 .tag{font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted-2); font-weight:600;}
+
+  .kpi{padding:16px 18px;}
+  .kpi .num{font-family:var(--sora); font-size:30px; font-weight:800; line-height:1;}
+  .kpi .label{margin-top:8px; font-size:12px; color:var(--muted); letter-spacing:.02em;}
+  .kpi .trend{font-size:11px; margin-top:6px; color:var(--muted-2);}
+  .kpi.red .num{color:var(--red);}
+  .kpi.green .num{color:var(--green);}
+  .kpi.amber .num{color:var(--amber);}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted-2); font-weight:600;
+     padding:8px 10px; border-bottom:1px solid var(--line-strong);}
+  td{padding:9px 10px; border-bottom:1px solid var(--line); color:var(--fg);}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(232,237,243,.02);}
+
+  .badge{display:inline-flex; align-items:center; gap:5px; font-size:11px; padding:3px 9px; border-radius:999px; font-weight:600; letter-spacing:.02em;}
+  .badge .d{width:6px;height:6px;border-radius:50%;}
+  .badge.pending{background:rgba(245,158,11,.14); color:var(--amber);}
+  .badge.approved{background:rgba(59,111,160,.18); color:#8ab4e0;}
+  .badge.in_progress{background:rgba(22,163,74,.16); color:var(--green);}
+  .badge.completed{background:rgba(232,237,243,.08); color:var(--muted);}
+  .badge.cancelled, .badge.rejected{background:rgba(220,38,38,.14); color:var(--red);}
+  .badge.critical{background:rgba(220,38,38,.16); color:var(--red);}
+  .badge.serious{background:rgba(245,158,11,.14); color:var(--amber);}
+  .badge.stable{background:rgba(22,163,74,.14); color:var(--green);}
+  .badge.online{background:rgba(22,163,74,.14); color:var(--green);}
+  .badge.offline{background:rgba(220,38,38,.14); color:var(--red);}
+
+  .empty{
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center;
+    padding:36px 20px; color:var(--muted-2); gap:10px; border:1px dashed var(--line-strong); border-radius:8px;
+  }
+  .empty .icon{opacity:.5; margin-bottom:2px;}
+  .empty h4{margin:0; font-family:var(--sora); font-size:13.5px; color:var(--muted); font-weight:600;}
+  .empty p{margin:0; font-size:12px; max-width:340px;}
+
+  .map-wrap{height:360px; border-radius:8px; overflow:hidden; border:1px solid var(--line); position:relative;}
+  .map-wrap .leaflet-container{background:#0d1730;}
+  .map-overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px;
+    background:rgba(15,27,61,.72); backdrop-filter:blur(1px); pointer-events:none; z-index:500; text-align:center;
+  }
+  .map-overlay span{font-size:12px; color:var(--muted); max-width:260px;}
+
+  /* Corridor signature element */
+  .corridor{display:flex; align-items:center; gap:0; padding:22px 4px 8px; overflow-x:auto;}
+  .corridor .seg{display:flex; align-items:center; flex-shrink:0;}
+  .corridor .node{
+    width:34px;height:34px;border-radius:50%; border:2px solid var(--line-strong); display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:700; color:var(--muted-2); background:var(--bg-deep); position:relative; flex-shrink:0; transition:all .3s ease;
+  }
+  .corridor .node .lbl{position:absolute; top:38px; font-size:10px; color:var(--muted-2); white-space:nowrap; font-weight:500;}
+  .corridor .node.active{border-color:var(--green); color:var(--green); box-shadow:0 0 0 5px rgba(22,163,74,.18); background:rgba(22,163,74,.08);}
+  .corridor .node.done{border-color:var(--muted-2); color:var(--muted-2);}
+  .corridor .track{width:56px; height:2px; background:var(--line-strong); flex-shrink:0; position:relative;}
+  .corridor .track.lit::after{content:""; position:absolute; inset:0; background:var(--green); animation:flow 1.1s linear infinite;}
+  @keyframes flow{from{transform:scaleX(0); transform-origin:left;} to{transform:scaleX(1); transform-origin:left;}}
+
+  .list-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--line);}
+  .list-row:last-child{border-bottom:none;}
+  .list-row .meta{font-size:11.5px; color:var(--muted-2);}
+
+  .activate-wrap{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:40px 20px;}
+  .activate-btn{
+    width:220px;height:220px;border-radius:50%; background:radial-gradient(circle at 35% 30%, #f04747, var(--red));
+    border:none; color:#fff; font-family:var(--sora); font-weight:800; font-size:19px; letter-spacing:.02em;
+    box-shadow:0 0 0 10px rgba(220,38,38,.12), 0 20px 50px -12px rgba(220,38,38,.5); transition:transform .12s ease;
+  }
+  .activate-btn:hover{transform:scale(1.02);}
+  .activate-btn:active{transform:scale(.97);}
+  .activate-btn.disabled{background:var(--surface-2); box-shadow:none; color:var(--muted-2); pointer-events:none;}
+  .activate-btn .sw{display:block; font-size:11px; font-weight:600; letter-spacing:.1em; opacity:.85; margin-bottom:6px;}
+
+  .stat-strip{display:flex; gap:22px; margin-top:6px;}
+  .stat-strip .s{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;}
+  .stat-strip .s b{color:var(--fg); font-family:var(--sora);}
+
+  .toast-wrap{position:fixed; bottom:20px; right:20px; display:flex; flex-direction:column; gap:8px; z-index:2000;}
+  .toast{
+    background:var(--surface-2); border:1px solid var(--line-strong); border-left:3px solid var(--primary);
+    padding:11px 16px; border-radius:6px; font-size:12.5px; min-width:240px; box-shadow:0 10px 30px -10px rgba(0,0,0,.5);
+    animation:slidein .25s ease;
+  }
+  .toast.red{border-left-color:var(--red);}
+  .toast.green{border-left-color:var(--green);}
+  @keyframes slidein{from{transform:translateX(30px); opacity:0;} to{transform:translateX(0); opacity:1;}}
+
+  .divider{height:1px; background:var(--line); margin:14px 0;}
+  .subtle{color:var(--muted); font-size:12.5px;}
+  .mono{font-family:'Manrope',monospace; font-size:12px; color:var(--muted);}
+
+  /* Public portal */
+  .public-hero{
+    background: radial-gradient(1200px 400px at 10% -10%, rgba(59,111,160,.35), transparent),
+                linear-gradient(180deg, var(--bg-deep), var(--bg-deep));
+    border-bottom:1px solid var(--line); padding:34px 24px 26px;
+  }
+  .public-hero h1{font-family:var(--sora); font-size:26px; margin:0 0 8px; font-weight:800;}
+  .public-hero p{margin:0; color:var(--muted); max-width:600px; font-size:13.5px;}
+  .public-nav{display:flex; justify-content:space-between; align-items:center; padding:16px 24px; border-bottom:1px solid var(--line);}
+
+  .device-row{display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);}
+  .device-row:last-child{border-bottom:none;}
+  .device-icon{width:32px;height:32px;border-radius:7px; background:var(--surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .battery-bar{width:60px; height:5px; border-radius:3px; background:var(--line-strong); overflow:hidden;}
+  .battery-bar .fill{height:100%; background:var(--green);}
+
+  .role-tab{display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid var(--line); flex-wrap:wrap;}
+  .role-tab button{background:transparent; border:none; color:var(--muted); padding:9px 4px; font-size:13px; font-weight:600;
+    border-bottom:2px solid transparent; margin-right:14px;}
+  .role-tab button.active{color:var(--fg); border-bottom-color:var(--primary);}
+
+  ::placeholder{color:var(--muted-2);}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+/* =========================================================================
+   SECAPMS — front-end prototype
+   Data layer below simulates the Supabase/Lovable Cloud schema described in
+   the plan (profiles, user_roles, hospitals, ambulances, drivers, junctions,
+   devices, device_health, emergency_events, gps_logs, notifications,
+   audit_logs). There is no live backend wired into this static build —
+   see ../backend/README.md and ../backend/schema.sql for the real
+   Supabase schema and the MQTT<->DB bridge service, and swap this mock
+   `db` object for real Supabase queries once those are provisioned.
+   ========================================================================= */
+
+const ROLES = ["public","admin","driver","hospital","traffic","maintenance"];
+const ROLE_LABEL = {public:"Public", admin:"Admin", driver:"Ambulance Driver", hospital:"Hospital Staff", traffic:"Traffic Controller", maintenance:"Maintenance Engineer"};
+
+// ---------- In-memory "DB" ----------
+const db = {
+  seeded:false,
+  hospitals:[],
+  ambulances:[],
+  drivers:[],
+  junctions:[],
+  devices:[],
+  device_health:[],
+  emergency_events:[],
+  audit_logs:[],
+  notifications:[],
+};
+
+function uid(p){ return p+"_"+Math.random().toString(36).slice(2,8); }
+
+function seedReferenceData(){
+  if(db.seeded) return;
+  db.hospitals = [
+    {id:uid("hosp"), name:"St. Aloysius General", lat:13.0060, lng:80.2210, beds_available:6, is_ready:true},
+    {id:uid("hosp"), name:"Marina City Hospital", lat:13.0480, lng:80.2820, beds_available:2, is_ready:true},
+    {id:uid("hosp"), name:"Kavery Multispeciality", lat:12.9950, lng:80.2500, beds_available:0, is_ready:false},
+  ];
+  db.junctions = [
+    {id:uid("jn"), name:"Anna Salai & Mount Rd", lat:13.0600, lng:80.2500, corridor_group:"C1"},
+    {id:uid("jn"), name:"Kathipara Flyover", lat:13.0100, lng:80.2020, corridor_group:"C1"},
+    {id:uid("jn"), name:"Guindy Junction", lat:12.9950, lng:80.2200, corridor_group:"C1"},
+    {id:uid("jn"), name:"Marina Loop", lat:13.0450, lng:80.2800, corridor_group:"C2"},
+  ];
+  db.ambulances = [
+    {id:uid("amb"), reg_number:"TN-07-AB-4521", hospital_id:db.hospitals[0].id, model:"Force Traveller", status:"available"},
+    {id:uid("amb"), reg_number:"TN-09-CJ-1187", hospital_id:db.hospitals[1].id, model:"Tata Winger", status:"available"},
+  ];
+  db.drivers = [
+    {id:uid("drv"), profile_id:uid("prof"), full_name:"R. Karthik", license_number:"TN0420110001234", ambulance_id:db.ambulances[0].id, on_duty:true},
+  ];
+  db.devices = [];
+  db.junctions.forEach(j=> db.devices.push({id:uid("dev"), kind:"junction_controller", external_id:"JC-"+j.name.slice(0,3).toUpperCase(), junction_id:j.id, firmware:"1.2.0", last_seen:null, online:false}));
+  db.ambulances.forEach(a=> db.devices.push({id:uid("dev"), kind:"ambulance_unit", external_id:"AU-"+a.reg_number.slice(-4), ambulance_id:a.id, firmware:"1.0.3", last_seen:null, online:false}));
+  db.hospitals.forEach(h=> db.devices.push({id:uid("dev"), kind:"hospital_alert", external_id:"HA-"+h.name.slice(0,3).toUpperCase(), hospital_id:h.id, firmware:"1.0.0", last_seen:null, online:false}));
+  db.seeded = true;
+  audit("admin","seed","reference_data",null,{hospitals:db.hospitals.length, junctions:db.junctions.length, ambulances:db.ambulances.length});
+}
+
+function audit(actor,action,entity,entity_id,meta){
+  db.audit_logs.unshift({id:uid("log"), actor, action, entity, entity_id, meta, ts:new Date()});
+}
+
+function activeCorridorEvent(){
+  return db.emergency_events.find(e=> e.status==="approved" || e.status==="in_progress");
+}
+
+// ---------- Toasts ----------
+function toast(msg, kind){
+  const wrap = document.getElementById("toasts");
+  const t = document.createElement("div");
+  t.className = "toast"+(kind?(" "+kind):"");
+  t.textContent = msg;
+  wrap.appendChild(t);
+  setTimeout(()=>{ t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, 3600);
+}
+
+// ---------- Router state ----------
+let state = { role:"public", page:"index" };
+
+function nav(role,page){
+  state.role = role; state.page = page||"index";
+  render();
+}
+
+// ---------- Icons (inline, minimal) ----------
+const ICONS = {
+  grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0"/></svg>',
+  truck:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="1" y="7" width="14" height="9"/><path d="M15 10h4l3 3v3h-7z"/><circle cx="6" cy="19" r="1.7"/><circle cx="17.5" cy="19" r="1.7"/></svg>',
+  signal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="18" rx="2"/><circle cx="12" cy="7" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r="1.4" fill="currentColor" stroke="none"/></svg>',
+  cross:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M3 12h18"/></svg>',
+  cpu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>',
+  chart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>',
+  log:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+  users:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6M16 8.5a3 3 0 110-5.6M22 20c0-2.7-2-5-5-5.7"/></svg>',
+  history:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 109-9"/><path d="M3 4v5h5M12 7v5l4 2"/></svg>',
+  home:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+  menu:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M3 12h18M3 18h18"/></svg>',
+};
+
+// ---------- Nav config per role ----------
+const NAV = {
+  admin:[
+    {p:"index",label:"Command Center",icon:"grid"},
+    {p:"emergencies",label:"Emergencies",icon:"bell"},
+    {p:"ambulances",label:"Ambulances",icon:"truck"},
+    {p:"traffic",label:"Traffic",icon:"signal"},
+    {p:"hospitals",label:"Hospitals",icon:"cross"},
+    {p:"devices",label:"Devices",icon:"cpu"},
+    {p:"analytics",label:"Analytics",icon:"chart"},
+    {p:"audit",label:"Audit Log",icon:"log"},
+    {p:"users",label:"Users & Roles",icon:"users"},
+  ],
+  driver:[
+    {p:"index",label:"Console",icon:"grid"},
+    {p:"history",label:"History",icon:"history"},
+  ],
+  hospital:[
+    {p:"index",label:"Incoming",icon:"bell"},
+    {p:"history",label:"History",icon:"history"},
+  ],
+  traffic:[
+    {p:"index",label:"Junctions",icon:"signal"},
+  ],
+  maintenance:[
+    {p:"index",label:"Device Health",icon:"cpu"},
+  ],
+};
+
+function timeAgo(d){
+  if(!d) return "never";
+  const s = Math.floor((Date.now()-new Date(d).getTime())/1000);
+  if(s<60) return s+"s ago";
+  if(s<3600) return Math.floor(s/60)+"m ago";
+  return Math.floor(s/3600)+"h ago";
+}
+function fmtTime(d){ return d? new Date(d).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : "—"; }
+
+// =========================================================================
+// RENDER
+// =========================================================================
+function render(){
+  const app = document.getElementById("app");
+  if(state.role==="public"){ app.innerHTML = renderPublic(); afterRenderPublic(); return; }
+  app.innerHTML = renderShell();
+  afterRenderShell();
+}
+
+function buildNotifications(){
+  const items = [];
+  db.emergency_events.filter(e=>e.status==='pending').forEach(e=>{
+    const drv = db.drivers.find(d=>d.id===e.driver_id);
+    items.push({ts:e.activated_at, text:`${drv?drv.full_name:'Driver'} activated a ${e.patient_category} emergency`, kind:"pending"});
+  });
+  db.devices.filter(d=>!d.online).forEach(d=>{
+    items.push({ts:d.last_seen||new Date(0), text:`${d.external_id} is offline`, kind:"offline"});
+  });
+  db.hospitals.filter(h=>!h.is_ready).forEach(h=>{
+    items.push({ts:new Date(0), text:`${h.name} has no beds marked ready`, kind:"hosp"});
+  });
+  return items.sort((a,b)=> new Date(b.ts)-new Date(a.ts)).slice(0,12);
+}
+
+function renderShell(){
+  const nav = NAV[state.role]||[];
+  const notifs = buildNotifications();
+  return `
+  <div class="sidebar-scrim" id="scrim"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="wordmark">
+      <div class="mark"><span class="dot"></span>SECAPMS</div>
+      <div class="sub">Corridor & Ambulance Priority</div>
+    </div>
+    <div class="switch-role">
+      <select id="roleSwitch">
+        ${ROLES.map(r=>`<option value="${r}" ${r===state.role?"selected":""}>${ROLE_LABEL[r]}</option>`).join("")}
+      </select>
+    </div>
+    <div class="role-badge"><span>Signed in as</span><span>${ROLE_LABEL[state.role]}</span></div>
+    <div class="nav">
+      <div class="section-label">Navigate</div>
+      ${nav.map(n=>`<a href="#" data-p="${n.p}" class="${state.page===n.p?'active':''}">${ICONS[n.icon]}${n.label}</a>`).join("")}
+    </div>
+    <div class="sidebar-foot">SECAPMS v1 · UI + schema<br/>Hardware feeds: awaiting devices</div>
+  </div>
+  <div class="main-col">
+    <div class="topstrip">
+      <button class="menu-btn" id="menuBtn" aria-label="Open menu">${ICONS.menu}</button>
+      <div class="left">
+        <div class="pill"><span class="d" style="background:${db.emergency_events.some(e=>e.status==='pending')?'var(--amber)':'var(--muted-2)'}"></span>${db.emergency_events.filter(e=>e.status==='pending').length} pending</div>
+        <div class="pill"><span class="d" style="background:${activeCorridorEvent()?'var(--green)':'var(--muted-2)'}"></span>${activeCorridorEvent()?'Corridor active':'No active corridor'}</div>
+        <div class="pill"><span class="d" style="background:var(--primary)"></span>${db.devices.filter(d=>d.online).length}/${db.devices.length||0} devices online</div>
+      </div>
+      <div class="right">
+        <div class="bell-wrap">
+          <button class="bell-btn" id="bellBtn" aria-label="Notifications">${ICONS.bell}${notifs.length? `<span class="bell-dot">${notifs.length>9?'9+':notifs.length}</span>`:""}</button>
+          <div class="bell-menu" id="bellMenu" style="display:none;">
+            ${notifs.length? notifs.map(n=>`<div class="n-item"><div>${n.text}</div><div class="t">${n.kind==='pending'?'awaiting approval':n.kind==='offline'?'device health':'readiness'}</div></div>`).join("")
+              : `<div class="n-empty">You're all caught up.</div>`}
+          </div>
+        </div>
+        <span id="clock"></span>
+      </div>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+  `;
+}
+
+function afterRenderShell(){
+  document.getElementById("roleSwitch").onchange = (e)=> nav(e.target.value,"index");
+  document.querySelectorAll(".nav a").forEach(a=>{
+    a.onclick = (e)=>{ e.preventDefault(); nav(state.role, a.dataset.p); closeMobileMenu(); };
+  });
+  const menuBtn = document.getElementById("menuBtn");
+  const scrim = document.getElementById("scrim");
+  if(menuBtn) menuBtn.onclick = ()=>{ document.getElementById("sidebar").classList.add("open"); scrim.classList.add("open"); };
+  if(scrim) scrim.onclick = closeMobileMenu;
+
+  const bellBtn = document.getElementById("bellBtn");
+  const bellMenu = document.getElementById("bellMenu");
+  if(bellBtn) bellBtn.onclick = (e)=>{ e.stopPropagation(); bellMenu.style.display = bellMenu.style.display==="none"?"block":"none"; };
+  document.addEventListener("click", (e)=>{ if(bellMenu && bellMenu.style.display==="block" && !bellMenu.contains(e.target) && e.target!==bellBtn) bellMenu.style.display="none"; }, {once:true});
+
+  tickClock();
+  const content = document.getElementById("content");
+  content.innerHTML = pageFor(state.role, state.page);
+  afterPage(state.role, state.page);
+}
+
+function closeMobileMenu(){
+  const sb = document.getElementById("sidebar"); const scrim = document.getElementById("scrim");
+  if(sb) sb.classList.remove("open");
+  if(scrim) scrim.classList.remove("open");
+}
+
+function tickClock(){
+  const el = document.getElementById("clock");
+  if(!el) return;
+  el.textContent = new Date().toLocaleString([], {weekday:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+setInterval(()=>{ tickClock(); }, 1000);
+
+function pageFor(role,page){
+  if(role==="admin") return adminPage(page);
+  if(role==="driver") return driverPage(page);
+  if(role==="hospital") return hospitalPage(page);
+  if(role==="traffic") return trafficPage(page);
+  if(role==="maintenance") return maintenancePage(page);
+  return "";
+}
+function afterPage(role,page){
+  if(role==="admin") afterAdminPage(page);
+  if(role==="driver") afterDriverPage(page);
+  if(role==="hospital") afterHospitalPage(page);
+  if(role==="traffic") afterTrafficPage(page);
+  if(role==="maintenance") afterMaintenancePage(page);
+}
+
+// ---------------- Empty state helper ----------------
+function emptyState(title, body){
+  return `<div class="empty">
+    <div class="icon">${ICONS.grid}</div>
+    <h4>${title}</h4>
+    <p>${body}</p>
+  </div>`;
+}
+
+// =========================================================================
+// ADMIN
+// =========================================================================
+function adminPage(page){
+  if(page==="index") return adminIndex();
+  if(page==="emergencies") return adminEmergencies();
+  if(page==="ambulances") return adminAmbulances();
+  if(page==="traffic") return adminTraffic();
+  if(page==="hospitals") return adminHospitals();
+  if(page==="devices") return adminDevices();
+  if(page==="analytics") return adminAnalytics();
+  if(page==="audit") return adminAudit();
+  if(page==="users") return adminUsers();
+  return "";
+}
+
+function adminIndex(){
+  const active = activeCorridorEvent();
+  const pending = db.emergency_events.filter(e=>e.status==='pending').length;
+  const completedToday = db.emergency_events.filter(e=>e.status==='completed').length;
+  const avgReady = db.hospitals.length? Math.round(100*db.hospitals.filter(h=>h.is_ready).length/db.hospitals.length):0;
+
+  return `
+  <div class="page-head">
+    <div><h1>Command Center</h1><p>Live overview of active corridors, fleet status, and system KPIs.</p></div>
+    <div class="head-actions">
+      ${db.seeded? `<button class="btn ghost sm" id="resetBtn">Reset demo data</button>` : `<button class="btn" id="seedBtn">Seed reference data</button>`}
+    </div>
+  </div>
+  <div class="grid cols-4" style="margin-bottom:14px;">
+    <div class="panel kpi amber"><div class="num">${pending}</div><div class="label">Pending approvals</div><div class="trend">Awaiting admin action</div></div>
+    <div class="panel kpi green"><div class="num">${active?1:0}</div><div class="label">Active corridor</div><div class="trend">${active? 'Ambulance en route':'None right now'}</div></div>
+    <div class="panel kpi"><div class="num">${completedToday}</div><div class="label">Completed events</div><div class="trend">This session</div></div>
+    <div class="panel kpi"><div class="num">${avgReady}%</div><div class="label">Hospital readiness</div><div class="trend">${db.hospitals.length} hospitals tracked</div></div>
+  </div>
+  <div class="grid cols-3" style="align-items:start;">
+    <div class="panel" style="grid-column:span 2;">
+      <h2>Live Map<span class="tag">${db.junctions.length? db.junctions.length+' junctions · '+db.ambulances.length+' units':'no feed'}</span></h2>
+      <div class="map-wrap" id="adminMap"></div>
+    </div>
+    <div class="panel">
+      <h2>Events Rail<span class="tag">realtime</span></h2>
+      ${db.emergency_events.length? eventsRailList() : emptyState("No events yet","Emergency activations from drivers will stream in here in real time.")}
+    </div>
+  </div>
+  ${active? `<div class="panel" style="margin-top:14px;">
+      <h2>Active Corridor — ${corridorLabelFor(active)}<span class="tag">${active.status}</span></h2>
+      ${corridorSVG(active)}
+    </div>` : ""}
+  `;
+}
+
+function eventsRailList(){
+  return `<div>${db.emergency_events.slice(0,6).map(e=>{
+    const drv = db.drivers.find(d=>d.id===e.driver_id);
+    return `<div class="list-row">
+      <div>
+        <div style="font-size:13px;">${drv? drv.full_name : 'Driver'} <span class="subtle">· ${e.patient_category}</span></div>
+        <div class="meta">${fmtTime(e.activated_at)}</div>
+      </div>
+      <span class="badge ${e.status}"><span class="d" style="background:currentColor"></span>${e.status.replace('_',' ')}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function corridorLabelFor(e){
+  const drv = db.drivers.find(d=>d.id===e.driver_id);
+  const hosp = db.hospitals.find(h=>h.id===e.hospital_id);
+  return (drv?drv.full_name:"Ambulance") + " → " + (hosp?hosp.name:"Hospital");
+}
+
+function corridorSVG(e){
+  const junctions = db.junctions.filter(j=>j.corridor_group==="C1");
+  const progressCount = e._corridorStep||0;
+  return `<div class="corridor">
+    <div class="node ${progressCount>0?'active':''}" title="Origin">A</div>
+    ${junctions.map((j,i)=>{
+      const idx=i+1;
+      const state = progressCount>idx? "done": progressCount===idx? "active":"";
+      const trackLit = progressCount>=idx ? "lit":"";
+      return `<div class="seg"><div class="track ${trackLit}"></div><div class="node ${state}">${idx}<span class="lbl">${j.name.split(' ')[0]}</span></div></div>`;
+    }).join("")}
+    <div class="seg"><div class="track ${progressCount>junctions.length?'lit':''}"></div><div class="node ${progressCount>junctions.length?'active':''}">H</div></div>
+  </div>`;
+}
+
+function afterAdminPage(page){
+  const seedBtn = document.getElementById("seedBtn");
+  if(seedBtn) seedBtn.onclick = ()=>{ seedReferenceData(); toast("Reference data seeded: hospitals, junctions, ambulances, devices.","green"); render(); };
+  const resetBtn = document.getElementById("resetBtn");
+  if(resetBtn) resetBtn.onclick = ()=>{ Object.assign(db,{seeded:false,hospitals:[],ambulances:[],drivers:[],junctions:[],devices:[],device_health:[],emergency_events:[],audit_logs:[],notifications:[]}); toast("Demo data reset."); render(); };
+
+  if(page==="index" && db.junctions.length) drawLeafletMap("adminMap", true);
+  if(page==="traffic" && db.junctions.length) drawLeafletMap("trafficMapAdmin", true);
+
+  if(page==="emergencies"){
+    document.querySelectorAll("[data-approve]").forEach(b=> b.onclick=()=>{ approveEvent(b.dataset.approve); });
+    document.querySelectorAll("[data-reject]").forEach(b=> b.onclick=()=>{ rejectEvent(b.dataset.reject); });
+  }
+  if(page==="hospitals"){
+    document.querySelectorAll("[data-toggleready]").forEach(b=> b.onclick=()=>{
+      const h = db.hospitals.find(x=>x.id===b.dataset.toggleready); h.is_ready=!h.is_ready; audit("admin","update","hospitals",h.id,{is_ready:h.is_ready}); render();
+    });
+  }
+  if(page==="users"){
+    const f = document.getElementById("addUserForm");
+    if(f) f.onsubmit = (ev)=>{ ev.preventDefault();
+      const name = document.getElementById("newUserName").value.trim();
+      const role = document.getElementById("newUserRole").value;
+      if(!name) return;
+      db.drivers_users = db.drivers_users||[];
+      db.drivers_users.push({id:uid("usr"), name, role});
+      audit("admin","create","user_roles",null,{name,role});
+      toast("User invited and role assigned.","green");
+      f.reset(); render();
+    };
+  }
+}
+
+function approveEvent(id){
+  const e = db.emergency_events.find(x=>x.id===id);
+  e.status="approved"; e.approved_at=new Date(); e.approved_by="admin"; e._corridorStep=0;
+  audit("admin","approve","emergency_events",id,{});
+  toast("Emergency approved — corridor opening.","green");
+  runCorridorSequence(e);
+  render();
+}
+function rejectEvent(id){
+  const e = db.emergency_events.find(x=>x.id===id);
+  e.status="rejected";
+  audit("admin","reject","emergency_events",id,{});
+  toast("Emergency rejected.","red");
+  render();
+}
+function runCorridorSequence(e){
+  const total = db.junctions.filter(j=>j.corridor_group==="C1").length + 2;
+  e.status="in_progress";
+  const iv = setInterval(()=>{
+    e._corridorStep = (e._corridorStep||0)+1;
+    if(e._corridorStep>=total){
+      clearInterval(iv);
+      e.status="completed"; e.completed_at=new Date();
+      audit("system","complete","emergency_events",e.id,{});
+      toast("Corridor closed — emergency completed.");
+    }
+    if(state.role==="admin"||state.role==="traffic"||state.role==="hospital") render();
+  }, 1400);
+}
+
+function adminEmergencies(){
+  return `
+  <div class="page-head"><div><h1>Emergencies</h1><p>Approval queue and full event history.</p></div></div>
+  <div class="panel">
+    <h2>Approval Queue<span class="tag">${db.emergency_events.filter(e=>e.status==='pending').length} pending</span></h2>
+    ${db.emergency_events.filter(e=>e.status==='pending').length===0 ? emptyState("Queue is empty","New activations from drivers appear here for approval.") : `
+    <table><thead><tr><th>Driver</th><th>Category</th><th>Hospital</th><th>Activated</th><th></th></tr></thead><tbody>
+    ${db.emergency_events.filter(e=>e.status==='pending').map(e=>{
+      const drv = db.drivers.find(d=>d.id===e.driver_id); const hosp = db.hospitals.find(h=>h.id===e.hospital_id);
+      return `<tr><td>${drv?drv.full_name:'—'}</td><td><span class="badge ${e.patient_category}">${e.patient_category}</span></td><td>${hosp?hosp.name:'—'}</td><td>${fmtTime(e.activated_at)}</td>
+      <td style="display:flex;gap:6px;justify-content:flex-end;"><button class="btn sm ok" data-approve="${e.id}">Approve</button><button class="btn sm danger" data-reject="${e.id}">Reject</button></td></tr>`;
+    }).join("")}
+    </tbody></table>`}
+  </div>
+  <div class="panel" style="margin-top:14px;">
+    <h2>History<span class="tag">${db.emergency_events.length} total</span></h2>
+    ${db.emergency_events.length===0? emptyState("No history yet","Completed and past events will be listed here.") : `
+    <table><thead><tr><th>Driver</th><th>Category</th><th>Hospital</th><th>Status</th><th>Activated</th><th>Completed</th></tr></thead><tbody>
+    ${db.emergency_events.map(e=>{
+      const drv = db.drivers.find(d=>d.id===e.driver_id); const hosp = db.hospitals.find(h=>h.id===e.hospital_id);
+      return `<tr><td>${drv?drv.full_name:'—'}</td><td><span class="badge ${e.patient_category}">${e.patient_category}</span></td><td>${hosp?hosp.name:'—'}</td><td><span class="badge ${e.status}">${e.status.replace('_',' ')}</span></td><td>${fmtTime(e.activated_at)}</td><td>${fmtTime(e.completed_at)}</td></tr>`;
+    }).join("")}</tbody></table>`}
+  </div>`;
+}
+
+function adminAmbulances(){
+  return `
+  <div class="page-head"><div><h1>Ambulances</h1><p>Fleet roster and live device pairing.</p></div></div>
+  <div class="panel">
+    <h2>Fleet<span class="tag">${db.ambulances.length} registered</span></h2>
+    ${db.ambulances.length===0? emptyState("No ambulances registered","Seed reference data from the Command Center, or add units manually once onboarding is enabled.") : `
+    <table><thead><tr><th>Reg. Number</th><th>Model</th><th>Base Hospital</th><th>Status</th><th>Driver on duty</th></tr></thead><tbody>
+    ${db.ambulances.map(a=>{
+      const hosp = db.hospitals.find(h=>h.id===a.hospital_id);
+      const drv = db.drivers.find(d=>d.ambulance_id===a.id);
+      return `<tr><td>${a.reg_number}</td><td>${a.model}</td><td>${hosp?hosp.name:'—'}</td><td><span class="badge online">${a.status}</span></td><td>${drv? drv.full_name+(drv.on_duty?' · on duty':' · off duty') : '—'}</td></tr>`;
+    }).join("")}</tbody></table>`}
+  </div>`;
+}
+
+function adminTraffic(){
+  const active = activeCorridorEvent();
+  return `
+  <div class="page-head"><div><h1>Traffic</h1><p>Junction grid and corridor state across the network.</p></div></div>
+  <div class="grid cols-2" style="align-items:start;">
+    <div class="panel"><h2>Junctions Map</h2><div class="map-wrap" id="trafficMapAdmin"></div></div>
+    <div class="panel">
+      <h2>Corridor State</h2>
+      ${active? corridorSVG(active) : emptyState("No corridor active","Corridor state renders here the moment an emergency is approved.")}
+      <div class="divider"></div>
+      <h3>Junctions<span class="tag">${db.junctions.length}</span></h3>
+      ${db.junctions.length===0? emptyState("No junctions yet","Seed reference data to populate the junction grid.") : `
+      <table><thead><tr><th>Junction</th><th>Group</th><th>State</th></tr></thead><tbody>
+      ${db.junctions.map(j=>`<tr><td>${j.name}</td><td>${j.corridor_group}</td><td><span class="badge ${active?'in_progress':'completed'}">${active?'priority':'normal'}</span></td></tr>`).join("")}
+      </tbody></table>`}
+    </div>
+  </div>`;
+}
+
+function adminHospitals(){
+  return `
+  <div class="page-head"><div><h1>Hospitals</h1><p>Readiness board across the network.</p></div></div>
+  <div class="panel">
+    ${db.hospitals.length===0? emptyState("No hospitals yet","Seed reference data from the Command Center.") : `
+    <table><thead><tr><th>Hospital</th><th>Beds available</th><th>Ready</th><th></th></tr></thead><tbody>
+    ${db.hospitals.map(h=>`<tr><td>${h.name}</td><td>${h.beds_available}</td><td><span class="badge ${h.is_ready?'online':'offline'}">${h.is_ready?'ready':'not ready'}</span></td>
+      <td style="text-align:right"><button class="btn sm ghost" data-toggleready="${h.id}">Toggle</button></td></tr>`).join("")}
+    </tbody></table>`}
+  </div>`;
+}
+
+function adminDevices(){
+  return `
+  <div class="page-head"><div><h1>Devices</h1><p>Health matrix across every connected unit.</p></div></div>
+  <div class="panel">
+    ${db.devices.length===0? emptyState("No devices paired","Once ESP32 units come online over Wi-Fi and publish to the broker, they appear here automatically.") : `
+    <table><thead><tr><th>Device</th><th>Kind</th><th>Firmware</th><th>Last seen</th><th>Status</th></tr></thead><tbody>
+    ${db.devices.map(d=>`<tr><td>${d.external_id}</td><td>${d.kind.replace('_',' ')}</td><td>${d.firmware}</td><td>${timeAgo(d.last_seen)}</td><td><span class="badge ${d.online?'online':'offline'}">${d.online?'online':'offline'}</span></td></tr>`).join("")}
+    </tbody></table>`}
+  </div>`;
+}
+
+function adminAnalytics(){
+  return `
+  <div class="page-head"><div><h1>Analytics</h1><p>Response-time and corridor-usage trends.</p></div></div>
+  <div class="grid cols-2">
+    <div class="panel"><h2>Events by status</h2><canvas id="chartStatus" height="180"></canvas></div>
+    <div class="panel"><h2>Hospital readiness</h2><canvas id="chartReady" height="180"></canvas></div>
+  </div>`;
+}
+
+function adminAudit(){
+  return `
+  <div class="page-head"><div><h1>Audit Log</h1><p>Every state-changing action, in order.</p></div></div>
+  <div class="panel">
+    ${db.audit_logs.length===0? emptyState("No activity yet","Actions taken across the system will be recorded here.") : `
+    <table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th></tr></thead><tbody>
+    ${db.audit_logs.map(l=>`<tr><td class="mono">${fmtTime(l.ts)}</td><td>${l.actor}</td><td>${l.action}</td><td>${l.entity}${l.entity_id?(' · '+l.entity_id):''}</td></tr>`).join("")}
+    </tbody></table>`}
+  </div>`;
+}
+
+function adminUsers(){
+  const users = db.drivers_users||[];
+  return `
+  <div class="page-head"><div><h1>Users & Roles</h1><p>Invite users and assign one of the five roles.</p></div></div>
+  <div class="grid cols-2" style="align-items:start;">
+    <div class="panel">
+      <h2>Invite a user</h2>
+      <form id="addUserForm" style="display:flex;flex-direction:column;gap:10px;">
+        <input id="newUserName" placeholder="Full name" required />
+        <select id="newUserRole">${ROLES.filter(r=>r!=="public").map(r=>`<option value="${r}">${ROLE_LABEL[r]}</option>`).join("")}</select>
+        <button class="btn" type="submit">Send invite</button>
+      </form>
+    </div>
+    <div class="panel">
+      <h2>Users<span class="tag">${users.length}</span></h2>
+      ${users.length===0? emptyState("No users invited yet","Invited users and their assigned role will be listed here.") : `
+      <table><thead><tr><th>Name</th><th>Role</th></tr></thead><tbody>
+      ${users.map(u=>`<tr><td>${u.name}</td><td><span class="badge online">${ROLE_LABEL[u.role]}</span></td></tr>`).join("")}
+      </tbody></table>`}
+    </div>
+  </div>`;
+}
+
+// =========================================================================
+// DRIVER
+// =========================================================================
+function driverPage(page){
+  if(page==="history") return driverHistory();
+  const drv = db.drivers[0];
+  const activeEv = db.emergency_events.find(e=> drv && e.driver_id===drv.id && ["pending","approved","in_progress"].includes(e.status));
+  return `
+  <div class="page-head"><div><h1>Emergency Console</h1><p>${drv? drv.full_name+" · "+drv.license_number : "No driver profile linked yet"}</p></div></div>
+  <div class="grid cols-3" style="align-items:start;">
+    <div class="panel" style="grid-column:span 2;">
+      <h2>Activation</h2>
+      <div class="activate-wrap">
+        <button class="activate-btn ${(!drv||activeEv)?'disabled':''}" id="activateBtn">
+          <span class="sw">${activeEv? activeEv.status.toUpperCase() : "TAP TO"}</span>
+          ${activeEv? "IN PROGRESS" : "ACTIVATE EMERGENCY"}
+        </button>
+        <div class="stat-strip">
+          <div class="s">GPS <b>${drv?'locked':'—'}</b></div>
+          <div class="s">Battery <b>87%</b></div>
+          <div class="s">Signal <b>Wi-Fi · strong</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Profile</h3>
+      ${drv? `<div class="list-row"><span class="subtle">Ambulance</span><span>${(db.ambulances.find(a=>a.id===drv.ambulance_id)||{}).reg_number||'—'}</span></div>
+      <div class="list-row"><span class="subtle">On duty</span><span class="badge ${drv.on_duty?'online':'offline'}">${drv.on_duty?'yes':'no'}</span></div>` :
+      emptyState("No driver linked","Ask an admin to invite you and link an ambulance in Users & Roles.")}
+    </div>
+  </div>
+  ${activeEv? `<div class="panel" style="margin-top:14px;"><h2>Corridor Progress<span class="tag">${activeEv.status}</span></h2>${activeEv.status!=='pending'? corridorSVG(activeEv) : `<p class="subtle">Waiting for admin approval…</p>`}</div>`:""}
+  `;
+}
+function driverHistory(){
+  const drv = db.drivers[0];
+  const events = drv? db.emergency_events.filter(e=>e.driver_id===drv.id) : [];
+  return `<div class="page-head"><div><h1>History</h1><p>Your past activations.</p></div></div>
+  <div class="panel">${events.length===0? emptyState("No trips yet","Your completed and past emergency runs will appear here."):`
+  <table><thead><tr><th>Category</th><th>Hospital</th><th>Status</th><th>Activated</th></tr></thead><tbody>
+  ${events.map(e=>{const hosp=db.hospitals.find(h=>h.id===e.hospital_id); return `<tr><td><span class="badge ${e.patient_category}">${e.patient_category}</span></td><td>${hosp?hosp.name:'—'}</td><td><span class="badge ${e.status}">${e.status}</span></td><td>${fmtTime(e.activated_at)}</td></tr>`}).join("")}
+  </tbody></table>`}</div>`;
+}
+function afterDriverPage(page){
+  const btn = document.getElementById("activateBtn");
+  if(btn) btn.onclick = ()=>{
+    const drv = db.drivers[0];
+    if(!drv){ toast("No driver profile linked yet.","red"); return; }
+    if(db.hospitals.length===0){ toast("No hospitals seeded yet — ask admin to seed reference data.","red"); return; }
+    const readyHosp = db.hospitals.find(h=>h.is_ready) || db.hospitals[0];
+    const ev = {id:uid("ev"), driver_id:drv.id, ambulance_id:drv.ambulance_id, hospital_id:readyHosp.id, patient_category: pickCategory(), status:"pending", activated_at:new Date(), approved_at:null, completed_at:null, approved_by:null};
+    db.emergency_events.unshift(ev);
+    audit(drv.full_name,"activate","emergency_events",ev.id,{category:ev.patient_category});
+    toast("Emergency activated — sent to admin for approval.","red");
+    render();
+  };
+}
+function pickCategory(){ const c=["critical","serious","stable"]; return c[Math.floor(Math.random()*c.length)]; }
+
+// =========================================================================
+// HOSPITAL
+// =========================================================================
+function hospitalPage(page){
+  if(page==="history") return hospitalHistory();
+  const hosp = db.hospitals[0];
+  const incoming = hosp? db.emergency_events.filter(e=>e.hospital_id===hosp.id && ["approved","in_progress"].includes(e.status)) : [];
+  return `
+  <div class="page-head"><div><h1>Incoming Alerts</h1><p>${hosp? hosp.name : "No hospital linked yet"}</p></div></div>
+  <div class="grid cols-3">
+    <div class="panel kpi"><div class="num">${hosp?hosp.beds_available:'—'}</div><div class="label">Beds available</div></div>
+    <div class="panel kpi ${hosp&&hosp.is_ready?'green':'amber'}"><div class="num">${hosp? (hosp.is_ready?'Ready':'Not ready'):'—'}</div><div class="label">Readiness</div></div>
+    <div class="panel kpi"><div class="num">${incoming.length}</div><div class="label">Incoming now</div></div>
+  </div>
+  <div class="panel" style="margin-top:14px;">
+    <h2>Incoming ETA Cards</h2>
+    ${incoming.length===0? emptyState("No incoming ambulances","Cards appear here the moment admin approves a corridor to your hospital.") : incoming.map(e=>{
+      const drv = db.drivers.find(d=>d.id===e.driver_id);
+      return `<div class="list-row"><div><div>${drv?drv.full_name:'Ambulance'} · <span class="badge ${e.patient_category}">${e.patient_category}</span></div><div class="meta">Corridor: ${e.status}</div></div><button class="btn sm ok" data-ready="${e.id}">Mark bed READY</button></div>`;
+    }).join("")}
+  </div>`;
+}
+function hospitalHistory(){
+  const hosp = db.hospitals[0];
+  const events = hosp? db.emergency_events.filter(e=>e.hospital_id===hosp.id) : [];
+  return `<div class="page-head"><div><h1>History</h1><p>Past arrivals at your hospital.</p></div></div>
+  <div class="panel">${events.length===0? emptyState("No history yet","Past arrivals will be listed here."):`
+  <table><thead><tr><th>Category</th><th>Status</th><th>Activated</th><th>Completed</th></tr></thead><tbody>
+  ${events.map(e=>`<tr><td><span class="badge ${e.patient_category}">${e.patient_category}</span></td><td><span class="badge ${e.status}">${e.status}</span></td><td>${fmtTime(e.activated_at)}</td><td>${fmtTime(e.completed_at)}</td></tr>`).join("")}
+  </tbody></table>`}</div>`;
+}
+function afterHospitalPage(){
+  document.querySelectorAll("[data-ready]").forEach(b=>b.onclick=()=>{ toast("Bed marked ready — driver and admin notified.","green"); audit("hospital","ready","emergency_events",b.dataset.ready,{}); });
+}
+
+// =========================================================================
+// TRAFFIC
+// =========================================================================
+function trafficPage(){
+  const active = activeCorridorEvent();
+  return `
+  <div class="page-head"><div><h1>Junction Control</h1><p>Corridor status and manual override.</p></div></div>
+  <div class="grid cols-3">
+    ${db.junctions.length===0? `<div class="panel" style="grid-column:span 3;">${emptyState("No junctions yet","Ask admin to seed reference data.")}</div>` :
+    db.junctions.map(j=>{
+      const dev = db.devices.find(d=>d.junction_id===j.id);
+      return `<div class="panel">
+        <h3>${j.name}<span class="tag">${j.corridor_group}</span></h3>
+        <div class="list-row"><span class="subtle">Signal</span><span class="badge ${active?'in_progress':'completed'}">${active?'priority green':'normal cycle'}</span></div>
+        <div class="list-row"><span class="subtle">Controller</span><span class="badge ${dev&&dev.online?'online':'offline'}">${dev&&dev.online?'online':'offline'}</span></div>
+        <button class="btn ghost sm" style="margin-top:8px;width:100%;" data-override="${j.id}">Manual override</button>
+      </div>`;
+    }).join("")}
+  </div>
+  ${active? `<div class="panel" style="margin-top:14px;"><h2>Corridor State</h2>${corridorSVG(active)}</div>` : ""}
+  `;
+}
+function afterTrafficPage(){
+  document.querySelectorAll("[data-override]").forEach(b=> b.onclick=()=>{ toast("Manual override sent to junction controller.","green"); audit("traffic","override","junctions",b.dataset.override,{}); });
+}
+
+// =========================================================================
+// MAINTENANCE
+// =========================================================================
+function maintenancePage(){
+  return `
+  <div class="page-head"><div><h1>Device Health</h1><p>Firmware versions, battery, signal, and alerts across all hardware.</p></div></div>
+  <div class="panel">
+    ${db.devices.length===0? emptyState("No devices paired yet","Once ESP32 units connect over Wi-Fi and publish a heartbeat, they'll show up here.") : db.devices.map(d=>`
+    <div class="device-row">
+      <div class="device-icon">${ICONS.cpu}</div>
+      <div style="flex:1;">
+        <div style="font-size:13px;">${d.external_id} <span class="subtle">· ${d.kind.replace('_',' ')}</span></div>
+        <div class="meta" style="font-size:11px;color:var(--muted-2);">firmware ${d.firmware} · last seen ${timeAgo(d.last_seen)}</div>
+      </div>
+      <div class="battery-bar"><div class="fill" style="width:${d.online?'70%':'0%'}"></div></div>
+      <span class="badge ${d.online?'online':'offline'}" style="margin-left:12px;">${d.online?'online':'offline'}</span>
+    </div>`).join("")}
+  </div>`;
+}
+function afterMaintenancePage(){}
+
+// =========================================================================
+// PUBLIC PORTAL
+// =========================================================================
+function renderPublic(){
+  const active = activeCorridorEvent();
+  return `
+  <div style="height:100vh;overflow-y:auto;">
+    <div class="public-nav">
+      <div class="mark" style="font-family:var(--sora);font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;"></span>SECAPMS</div>
+      <button class="btn sm" id="staffLoginBtn">Staff sign in</button>
+    </div>
+    <div class="public-hero">
+      <h1>Live emergency corridors, right now.</h1>
+      <p>Track active ambulance corridors and hospital advisories across the city. No account needed — this view updates in real time as approved emergencies move through traffic junctions.</p>
+    </div>
+    <div class="content" style="max-width:1100px;">
+      <div class="grid cols-3" style="align-items:start;">
+        <div class="panel" style="grid-column:span 2;">
+          <h2>City Map<span class="tag">${db.junctions.length? db.junctions.length+' junctions':'no feed'}</span></h2>
+          <div class="map-wrap" id="publicMap"></div>
+        </div>
+        <div class="panel">
+          <h2>Active Corridors</h2>
+          ${active? `<div class="list-row"><div><div>Corridor in progress</div><div class="meta">${active.patient_category} case</div></div><span class="badge in_progress">live</span></div>`
+            : emptyState("No active corridors","When an ambulance emergency is approved, its route appears here.")}
+          <div class="divider"></div>
+          <h3>Advisories</h3>
+          ${active? `<p class="subtle">Expect brief signal holds near active corridor junctions. Please clear the lane for approaching ambulances.</p>`
+            : db.hospitals.some(h=>!h.is_ready) ? `<p class="subtle">${db.hospitals.filter(h=>!h.is_ready).length} hospital(s) reporting limited bed availability nearby.</p>`
+            : `<p class="subtle">No advisories at this time.</p>`}
+        </div>
+      </div>
+      ${active? `<div class="panel" style="margin-top:14px;"><h2>Corridor Progress</h2>${corridorSVG(active)}</div>`:""}
+    </div>
+  </div>`;
+}
+function afterRenderPublic(){
+  if(db.junctions.length) drawLeafletMap("publicMap", false);
+  const b = document.getElementById("staffLoginBtn");
+  if(b) b.onclick = ()=> nav("admin","index");
+}
+
+// =========================================================================
+// MAP
+// =========================================================================
+let mapInstances = {};
+let mapAmbulanceMarkers = {};
+function drawLeafletMap(elId, withOverlay){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.innerHTML="";
+  if(mapInstances[elId]){ try{ mapInstances[elId].remove(); }catch(e){} }
+  const center = db.junctions.length? [db.junctions[0].lat, db.junctions[0].lng] : [13.0827,80.2707];
+  const map = L.map(elId, {zoomControl:false, attributionControl:false}).setView(center, 12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19}).addTo(map);
+  mapInstances[elId]=map;
+
+  const corridorJunctions = db.junctions.filter(j=>j.corridor_group==="C1");
+  db.junctions.forEach(j=>{
+    L.circleMarker([j.lat,j.lng],{radius:6, color:"#3b6fa0", fillColor:"#3b6fa0", fillOpacity:.9, weight:2}).addTo(map).bindTooltip(j.name);
+  });
+  db.hospitals.forEach(h=>{
+    L.circleMarker([h.lat,h.lng],{radius:7, color:"#dc2626", fillColor:"#dc2626", fillOpacity:.85, weight:2}).addTo(map).bindTooltip(h.name+(h.is_ready?" · ready":" · not ready"));
+  });
+
+  // Draw the corridor route (origin -> junctions -> destination hospital) whenever
+  // an event is active, and place an animated ambulance marker that advances with
+  // the same corridor step used by the corridor diagram, so both visuals agree.
+  const active = activeCorridorEvent();
+  if(active && corridorJunctions.length){
+    const hosp = db.hospitals.find(h=>h.id===active.hospital_id);
+    const origin = corridorJunctions[0] ? [corridorJunctions[0].lat+0.012, corridorJunctions[0].lng-0.012] : center;
+    const routePts = [origin, ...corridorJunctions.map(j=>[j.lat,j.lng]), hosp? [hosp.lat,hosp.lng] : center];
+    L.polyline(routePts, {color:"#16a34a", weight:3, opacity:.55, dashArray:"1 8"}).addTo(map);
+    const truckIcon = L.divIcon({html:'<div style="font-size:18px;line-height:1;filter:drop-shadow(0 0 4px rgba(22,163,74,.8));">🚑</div>', className:"", iconSize:[22,22], iconAnchor:[11,11]});
+    const step = Math.min(active._corridorStep||0, routePts.length-1);
+    const marker = L.marker(routePts[step], {icon:truckIcon}).addTo(map);
+    mapAmbulanceMarkers[elId] = {marker, routePts};
+    map.fitBounds(L.latLngBounds(routePts), {padding:[24,24]});
+  }
+
+  if(db.junctions.length===0 && withOverlay){
+    el.insertAdjacentHTML("beforeend", `<div class="map-overlay"><span>Awaiting live feed — junction and ambulance positions will populate once devices report GPS.</span></div>`);
+  }
+}
+
+// Keep every mounted Leaflet map correctly sized when the window/viewport changes
+// (mobile rotation, sidebar drawer opening, etc.) instead of leaving stale tiles.
+window.addEventListener("resize", ()=>{
+  Object.values(mapInstances).forEach(m=>{ try{ m.invalidateSize(); }catch(e){} });
+});
+
+// =========================================================================
+// Charts (rendered lazily on Analytics page)
+// =========================================================================
+const _origAfterAdmin = afterAdminPage;
+afterAdminPage = function(page){
+  _origAfterAdmin(page);
+  if(page==="analytics"){
+    const statusCounts = {};
+    db.emergency_events.forEach(e=> statusCounts[e.status]=(statusCounts[e.status]||0)+1);
+    const ctx1 = document.getElementById("chartStatus");
+    if(ctx1) new Chart(ctx1, {type:'bar', data:{labels:Object.keys(statusCounts).length?Object.keys(statusCounts):['no data'], datasets:[{data:Object.values(statusCounts).length?Object.values(statusCounts):[0], backgroundColor:'#3b6fa0'}]}, options:{plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#9fb0c9'}, grid:{color:'rgba(232,237,243,.06)'}}, y:{ticks:{color:'#9fb0c9'},grid:{color:'rgba(232,237,243,.06)'}}}}});
+    const ctx2 = document.getElementById("chartReady");
+    const ready = db.hospitals.filter(h=>h.is_ready).length, notReady = db.hospitals.length-ready;
+    if(ctx2) new Chart(ctx2, {type:'doughnut', data:{labels:['Ready','Not ready'], datasets:[{data:[ready||0,notReady||0], backgroundColor:['#16a34a','#dc2626']}]}, options:{plugins:{legend:{labels:{color:'#e8edf3'}}}}});
+  }
+};
+
+// =========================================================================
+// Simulate device heartbeats once seeded, to demonstrate realtime health
+// =========================================================================
+setInterval(()=>{
+  if(!db.seeded) return;
+  db.devices.forEach(d=>{
+    if(Math.random()<0.5){ d.online = true; d.last_seen = new Date(); }
+  });
+}, 4000);
+
+// Boot
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "secapms-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SECAPMS MQTT <-> Supabase bridge - the piece that connects Wi-Fi/MQTT hardware to the SECAPMS database and back",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mqtt": "^5.10.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -26,9 +26,21 @@ export function startMqttBridge() {
     reconnectPeriod: 4000,
   });
 
-  client.on("connect", () => {
-    console.log("[mqtt] connected");
+client.on("connect", () => {
+  console.log("[mqtt] Connected successfully");
+
+  client.subscribe(`${PREFIX}/#`, { qos: 1 }, (err) => {
+    if (err) {
+      console.error("[mqtt] Subscribe failed:", err.message);
+    } else {
+      console.log("[mqtt] Subscribed to", `${PREFIX}/#`);
+    }
   });
+});
+
+client.on("message", (topic, payload) => {
+  handleMessage(topic, payload);
+});
 
   client.on("error", (err) => {
     console.log(err.message);

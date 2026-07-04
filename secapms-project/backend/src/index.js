@@ -140,6 +140,12 @@ app.get("/api/emergency-events", async (_req, res) => {
     });
   }
 });
+app.get("/version", (_req, res) => {
+  res.json({
+    version: "SECAPMS API v2",
+    time: new Date().toISOString(),
+  });
+});
 
 // ----------------------------------------------------
 // Start Server

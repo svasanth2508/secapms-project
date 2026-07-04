@@ -15,26 +15,10 @@ const PREFIX = process.env.MQTT_TOPIC_PREFIX || "secapms/v1";
  *   secapms/v1/<kind>/<id>/lwt            -> devices.last_seen / online flag
  */
 export function startMqttBridge() {
-  client.on("connect", () => {
-  console.log("[MQTT] Connected successfully");
-  client.subscribe(`${PREFIX}/#`, { qos: 1 });
-});
+  console.log("MQTT URL:", process.env.MQTT_URL);
+  console.log("MQTT USER:", process.env.MQTT_USERNAME);
+  console.log("MQTT PASS LENGTH:", process.env.MQTT_PASSWORD?.length);
 
-client.on("error", (err) => {
-  console.error("[MQTT ERROR]", err.message);
-});
-
-client.on("close", () => {
-  console.log("[MQTT] Connection closed");
-});
-
-client.on("offline", () => {
-  console.log("[MQTT] Client offline");
-});
-
-client.on("reconnect", () => {
-  console.log("[MQTT] Reconnecting...");
-});
   const client = mqtt.connect(process.env.MQTT_URL, {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
@@ -43,19 +27,11 @@ client.on("reconnect", () => {
   });
 
   client.on("connect", () => {
-    console.log("[mqtt] connected, subscribing to " + PREFIX + "/#");
-    client.subscribe(`${PREFIX}/#`, { qos: 1 });
+    console.log("[mqtt] connected");
   });
 
-  client.on("reconnect", () => console.log("[mqtt] reconnecting..."));
-  client.on("error", (err) => console.error("[mqtt] error:", err.message));
-
-  client.on("message", async (topic, payloadBuf) => {
-    try {
-      await handleMessage(topic, payloadBuf);
-    } catch (err) {
-      console.error(`[mqtt] failed handling ${topic}:`, err.message);
-    }
+  client.on("error", (err) => {
+    console.log(err.message);
   });
 
   return client;

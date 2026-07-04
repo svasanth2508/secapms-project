@@ -4,72 +4,110 @@ import { supabase } from "./supabaseClient.js";
 const PREFIX = process.env.MQTT_TOPIC_PREFIX || "secapms/v1";
 
 /**
- * Connects to the broker and routes every inbound device message to the
- * right Supabase write, matching the topic layout documented in
- * firmware/common/secapms_config.h:
- *
- *   secapms/v1/ambulance/<id>/telemetry   -> gps_logs, ambulances (live position)
- *   secapms/v1/ambulance/<id>/event       -> emergency_events (new pending row)
- *   secapms/v1/junction/<id>/health       -> device_health, devices.last_seen
- *   secapms/v1/hospital/<id>/ack          -> emergency_events (hospital ready ack)
- *   secapms/v1/<kind>/<id>/lwt            -> devices.last_seen / online flag
+ * Connects to HiveMQ Cloud and routes inbound MQTT messages
+ * to the appropriate Supabase handlers.
  */
 export function startMqttBridge() {
+  console.log("======================================");
+  console.log("Starting MQTT Bridge...");
   console.log("MQTT URL:", process.env.MQTT_URL);
   console.log("MQTT USER:", process.env.MQTT_USERNAME);
   console.log("MQTT PASS LENGTH:", process.env.MQTT_PASSWORD?.length);
+  console.log("======================================");
 
-  const client = mqtt.connect(process.env.MQTT_URL, {
+  const client = mqtt.connect({
+    host: "2e3c2cfd53374ed98b4555ed3053dea73.s1.eu.hivemq.cloud",
+    port: 8883,
+    protocol: "mqtts",
+
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
-    clientId: "secapms-backend-" + Math.random().toString(16).slice(2),
-    reconnectPeriod: 4000,
+
+    clientId:
+      "secapms-backend-" + Math.random().toString(16).substring(2, 10),
+
+    reconnectPeriod: 5000,
+    connectTimeout: 30000,
+    clean: true,
+    rejectUnauthorized: true,
   });
 
-client.on("connect", () => {
-  console.log("[mqtt] Connected successfully");
+  client.on("connect", () => {
+    console.log("======================================");
+    console.log("[MQTT] CONNECTED SUCCESSFULLY");
+    console.log("======================================");
 
-  client.subscribe(`${PREFIX}/#`, { qos: 1 }, (err) => {
-    if (err) {
-      console.error("[mqtt] Subscribe failed:", err.message);
-    } else {
-      console.log("[mqtt] Subscribed to", `${PREFIX}/#`);
-    }
+    client.subscribe(`${PREFIX}/#`, { qos: 1 }, (err) => {
+      if (err) {
+        console.error("[MQTT] Subscribe Error:", err);
+      } else {
+        console.log("[MQTT] Subscribed to:", `${PREFIX}/#`);
+      }
+    });
   });
-});
 
-client.on("message", (topic, payload) => {
-  handleMessage(topic, payload);
-});
+  client.on("message", (topic, payload) => {
+    console.log("[MQTT] Message Received:", topic);
+
+    handleMessage(topic, payload).catch((err) => {
+      console.error("[MQTT] Message Handler Error:", err);
+    });
+  });
+
+  client.on("reconnect", () => {
+    console.log("[MQTT] Reconnecting...");
+  });
+
+  client.on("offline", () => {
+    console.log("[MQTT] Client Offline");
+  });
+
+  client.on("close", () => {
+    console.log("[MQTT] Connection Closed");
+  });
+
+  client.on("end", () => {
+    console.log("[MQTT] Connection Ended");
+  });
 
   client.on("error", (err) => {
-    console.log(err.message);
+    console.error("======================================");
+    console.error("[MQTT ERROR]");
+    console.error(err);
+    console.error("======================================");
   });
 
   return client;
 }
 
 async function handleMessage(topic, payloadBuf) {
-  const parts = topic.split("/"); // ["secapms","v1","ambulance","<id>","telemetry"]
+  const parts = topic.split("/");
   const [, , kind, externalId, subtopic] = parts;
 
-  // Retained last-will messages arrive as plain "online" / "offline" text,
-  // everything else is JSON.
   if (subtopic === "lwt") {
     const online = payloadBuf.toString() === "online";
+
     await supabase
       .from("devices")
-      .update({ last_seen: new Date().toISOString(), online })
+      .update({
+        last_seen: new Date().toISOString(),
+        online,
+      })
       .eq("external_id", externalId);
-    console.log(`[device] ${externalId} -> ${online ? "online" : "offline"}`);
+
+    console.log(
+      `[DEVICE] ${externalId} -> ${online ? "ONLINE" : "OFFLINE"}`
+    );
+
     return;
   }
 
   let payload;
+
   try {
     payload = JSON.parse(payloadBuf.toString());
   } catch {
-    console.warn(`[mqtt] non-JSON payload on ${topic}, ignoring`);
+    console.warn(`[MQTT] Invalid JSON on ${topic}`);
     return;
   }
 
@@ -88,8 +126,6 @@ async function handleAmbulanceTelemetry(externalId, payload) {
   const device = await findDevice(externalId);
   if (!device || !device.ambulance_id) return;
 
-  // Find the currently active event for this ambulance, if any, so the
-  // GPS point can be attached to it.
   const { data: activeEvent } = await supabase
     .from("emergency_events")
     .select("id")
@@ -111,7 +147,10 @@ async function handleAmbulanceTelemetry(externalId, payload) {
 
   await supabase
     .from("devices")
-    .update({ last_seen: new Date().toISOString(), online: true })
+    .update({
+      last_seen: new Date().toISOString(),
+      online: true,
+    })
     .eq("id", device.id);
 }
 
@@ -121,7 +160,7 @@ async function handleAmbulanceActivation(externalId, payload) {
 
   const { data: ambulance } = await supabase
     .from("ambulances")
-    .select("id, hospital_id")
+    .select("id,hospital_id")
     .eq("id", device.ambulance_id)
     .maybeSingle();
 
@@ -140,8 +179,12 @@ async function handleAmbulanceActivation(externalId, payload) {
     activated_at: new Date().toISOString(),
   });
 
-  if (error) console.error("[event] insert failed:", error.message);
-  else console.log(`[event] pending emergency created for ambulance ${externalId}`);
+  if (error)
+    console.error("[EVENT] Insert Failed:", error.message);
+  else
+    console.log(
+      `[EVENT] Emergency Created for ${externalId}`
+    );
 }
 
 async function handleJunctionHealth(externalId, payload) {
@@ -158,27 +201,38 @@ async function handleJunctionHealth(externalId, payload) {
 
   await supabase
     .from("devices")
-    .update({ last_seen: new Date().toISOString(), online: true })
+    .update({
+      last_seen: new Date().toISOString(),
+      online: true,
+    })
     .eq("id", device.id);
 }
 
 async function handleHospitalAck(externalId, payload) {
   if (!payload.event_id) return;
-  await supabase
-    .from("notifications")
-    .insert({
-      kind: "hospital_ready_ack",
-      payload: { event_id: payload.event_id, device: externalId },
-    });
-  console.log(`[hospital] ${externalId} acknowledged bed ready for event ${payload.event_id}`);
+
+  await supabase.from("notifications").insert({
+    kind: "hospital_ready_ack",
+    payload: {
+      event_id: payload.event_id,
+      device: externalId,
+    },
+  });
+
+  console.log(
+    `[HOSPITAL] ${externalId} acknowledged event ${payload.event_id}`
+  );
 }
 
 async function findDevice(externalId) {
   const { data, error } = await supabase
     .from("devices")
-    .select("id, kind, ambulance_id, junction_id, hospital_id")
+    .select("id,kind,ambulance_id,junction_id,hospital_id")
     .eq("external_id", externalId)
     .maybeSingle();
-  if (error) console.error("[device] lookup failed:", error.message);
+
+  if (error)
+    console.error("[DEVICE] Lookup Failed:", error.message);
+
   return data;
 }

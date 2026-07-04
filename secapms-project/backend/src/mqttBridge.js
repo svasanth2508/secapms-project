@@ -8,78 +8,30 @@ const PREFIX = process.env.MQTT_TOPIC_PREFIX || "secapms/v1";
  * to the appropriate Supabase handlers.
  */
 export function startMqttBridge() {
-  console.log("======================================");
-  console.log("Starting MQTT Bridge...");
-  console.log("MQTT URL:", process.env.MQTT_URL);
-  console.log("MQTT USER:", process.env.MQTT_USERNAME);
-  console.log("MQTT PASS LENGTH:", process.env.MQTT_PASSWORD?.length);
-  console.log("======================================");
+  console.log("===== MQTT DEBUG =====");
+  console.log("URL:", "[" + process.env.MQTT_URL + "]");
+  console.log("USERNAME:", "[" + process.env.MQTT_USERNAME + "]");
+  console.log("PASSWORD:", "[" + process.env.MQTT_PASSWORD + "]");
+  console.log("PASSWORD LENGTH:", process.env.MQTT_PASSWORD?.length);
+  console.log("======================");
 
-  const client = mqtt.connect({
-    host: "2e3c2cfd53374ed98b4555ed3053dea73.s1.eu.hivemq.cloud",
-    port: 8883,
-    protocol: "mqtts",
-
+  const client = mqtt.connect(process.env.MQTT_URL, {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,
-
-    clientId:
-      "secapms-backend-" + Math.random().toString(16).substring(2, 10),
-
+    clientId: "secapms-backend-" + Math.random().toString(16).slice(2),
     reconnectPeriod: 5000,
-    connectTimeout: 30000,
-    clean: true,
-    rejectUnauthorized: true,
   });
 
   client.on("connect", () => {
-    console.log("======================================");
-    console.log("[MQTT] CONNECTED SUCCESSFULLY");
-    console.log("======================================");
-
-    client.subscribe(`${PREFIX}/#`, { qos: 1 }, (err) => {
-      if (err) {
-        console.error("[MQTT] Subscribe Error:", err);
-      } else {
-        console.log("[MQTT] Subscribed to:", `${PREFIX}/#`);
-      }
-    });
-  });
-
-  client.on("message", (topic, payload) => {
-    console.log("[MQTT] Message Received:", topic);
-
-    handleMessage(topic, payload).catch((err) => {
-      console.error("[MQTT] Message Handler Error:", err);
-    });
-  });
-
-  client.on("reconnect", () => {
-    console.log("[MQTT] Reconnecting...");
-  });
-
-  client.on("offline", () => {
-    console.log("[MQTT] Client Offline");
-  });
-
-  client.on("close", () => {
-    console.log("[MQTT] Connection Closed");
-  });
-
-  client.on("end", () => {
-    console.log("[MQTT] Connection Ended");
+    console.log("[MQTT] Connected");
   });
 
   client.on("error", (err) => {
-    console.error("======================================");
-    console.error("[MQTT ERROR]");
-    console.error(err);
-    console.error("======================================");
+    console.error("[MQTT ERROR]", err);
   });
 
   return client;
 }
-
 async function handleMessage(topic, payloadBuf) {
   const parts = topic.split("/");
   const [, , kind, externalId, subtopic] = parts;

@@ -15,10 +15,26 @@ const PREFIX = process.env.MQTT_TOPIC_PREFIX || "secapms/v1";
  *   secapms/v1/<kind>/<id>/lwt            -> devices.last_seen / online flag
  */
 export function startMqttBridge() {
- console.log("MQTT CONFIG");
-console.log("URL:", process.env.MQTT_URL);
-console.log("USERNAME:", process.env.MQTT_USERNAME);
-console.log("PASSWORD LENGTH:", process.env.MQTT_PASSWORD?.length);
+  client.on("connect", () => {
+  console.log("[MQTT] Connected successfully");
+  client.subscribe(`${PREFIX}/#`, { qos: 1 });
+});
+
+client.on("error", (err) => {
+  console.error("[MQTT ERROR]", err.message);
+});
+
+client.on("close", () => {
+  console.log("[MQTT] Connection closed");
+});
+
+client.on("offline", () => {
+  console.log("[MQTT] Client offline");
+});
+
+client.on("reconnect", () => {
+  console.log("[MQTT] Reconnecting...");
+});
   const client = mqtt.connect(process.env.MQTT_URL, {
     username: process.env.MQTT_USERNAME,
     password: process.env.MQTT_PASSWORD,

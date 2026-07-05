@@ -39,8 +39,11 @@ const client = mqtt.connect({
     }
   });
 });
-
 client.on("message", async (topic, payload) => {
+  console.log("[MQTT RECEIVED]");
+  console.log("Topic:", topic);
+  console.log("Payload:", payload.toString());
+
   try {
     await handleMessage(topic, payload);
   } catch (err) {

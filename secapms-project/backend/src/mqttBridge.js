@@ -4,13 +4,14 @@ import { supabase } from "./supabaseClient.js";
 const PREFIX = process.env.MQTT_TOPIC_PREFIX || "secapms/v1";
 
 /**
- * Connects to EMQX Cloud and routes inbound MQTT messages
+ * Connects to HiveMQ Cloud and routes inbound MQTT messages
  * to the appropriate Supabase handlers.
  */
 export function startMqttBridge() {
   console.log("===== MQTT DEBUG =====");
   console.log("URL:", "[" + process.env.MQTT_URL + "]");
   console.log("USERNAME:", "[" + process.env.MQTT_USERNAME + "]");
+  console.log("PASSWORD:", "[" + process.env.MQTT_PASSWORD + "]");
   console.log("PASSWORD LENGTH:", process.env.MQTT_PASSWORD?.length);
   console.log("======================");
 
@@ -20,61 +21,40 @@ const client = mqtt.connect({
   protocol: "mqtts",
   username: process.env.MQTT_USERNAME,
   password: process.env.MQTT_PASSWORD,
+  protocolVersion: 5,
   clientId: "secapms-backend-" + Math.random().toString(16).slice(2),
   clean: true,
   reconnectPeriod: 5000,
   connectTimeout: 30000,
-  protocolVersion: 5,
 });
 
-  client.on("connect", () => {
-    console.log("[MQTT] Connected");
+ client.on("connect", () => {
+  console.log("[MQTT] Connected");
 
-    client.subscribe(`${PREFIX}/#`, (err) => {
-      if (err) {
-        console.error("[MQTT] Subscribe failed:", err);
-      } else {
-        console.log("[MQTT] Subscribed to", `${PREFIX}/#`);
-      }
-    });
-  });
-
-  client.on("message", async (topic, payload) => {
-    try {
-      await handleMessage(topic, payload);
-    } catch (err) {
-      console.error("[MQTT MESSAGE ERROR]", err);
+  client.subscribe(`${PREFIX}/#`, (err) => {
+    if (err) {
+      console.error("[MQTT] Subscribe failed:", err);
+    } else {
+      console.log("[MQTT] Subscribed to", `${PREFIX}/#`);
     }
   });
+});
 
-  client.on("error", (err) => {
-    console.error("[MQTT ERROR]", err);
-  });
-
-  client.on("close", () => {
-    console.log("[MQTT] Connection Closed");
-  });
-
-  client.on("reconnect", () => {
-    console.log("[MQTT] Reconnecting...");
-  });
+client.on("message", async (topic, payload) => {
+  try {
+    await handleMessage(topic, payload);
+  } catch (err) {
+    console.error("[MQTT MESSAGE ERROR]", err);
+  }
+});
 
   return client;
 }
-
 async function handleMessage(topic, payloadBuf) {
   const parts = topic.split("/");
-
-  // Expected:
-  // secapms/v1/ambulance/<id>/telemetry
-  if (parts.length < 5) {
-    console.warn("[MQTT] Invalid topic:", topic);
-    return;
-  }
-
   const [, , kind, externalId, subtopic] = parts;
 
-  // Last Will Topic
+
   if (subtopic === "lwt") {
     const online = payloadBuf.toString() === "online";
 
@@ -110,17 +90,122 @@ async function handleMessage(topic, payloadBuf) {
     await handleJunctionHealth(externalId, payload);
   } else if (kind === "hospital" && subtopic === "ack") {
     await handleHospitalAck(externalId, payload);
-  } else {
-    console.log("[MQTT] Unhandled topic:", topic);
   }
 }
 
-// ------------------------------------------------------------------
-// KEEP EVERYTHING BELOW THIS LINE EXACTLY AS YOU ALREADY HAVE IT
-// ------------------------------------------------------------------
+async function handleAmbulanceTelemetry(externalId, payload) {
+  const device = await findDevice(externalId);
+  if (!device || !device.ambulance_id)
+   return;
+  const { data: activeEvent } = await supabase
+    .from("emergency_events")
+    .select("id")
+    .eq("ambulance_id", device.ambulance_id)
+    .in("status", ["approved", "in_progress"])
+    .order("activated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-// async function handleAmbulanceTelemetry(...) { ... }
-// async function handleAmbulanceActivation(...) { ... }
-// async function handleJunctionHealth(...) { ... }
-// async function handleHospitalAck(...) { ... }
-// async function findDevice(...) { ... }
+  if (activeEvent) {
+    await supabase.from("gps_logs").insert({
+      event_id: activeEvent.id,
+      ts: new Date().toISOString(),
+      lat: payload.lat,
+      lng: payload.lng,
+      speed: payload.speed_kmph,
+    });
+  }
+
+  await supabase
+    .from("devices")
+    .update({
+      last_seen: new Date().toISOString(),
+      online: true,
+    })
+    .eq("id", device.id);
+}
+
+async function handleAmbulanceActivation(externalId, payload) {
+  const device = await findDevice(externalId);
+  if (!device || !device.ambulance_id) return;
+
+  const { data: ambulance } = await supabase
+    .from("ambulances")
+    .select("id,hospital_id")
+    .eq("id", device.ambulance_id)
+    .maybeSingle();
+
+  const { data: driver } = await supabase
+    .from("drivers")
+    .select("id")
+    .eq("ambulance_id", device.ambulance_id)
+    .maybeSingle();
+
+  const { error } = await supabase.from("emergency_events").insert({
+    driver_id: driver?.id ?? null,
+    ambulance_id: device.ambulance_id,
+    hospital_id: ambulance?.hospital_id ?? null,
+    patient_category: payload.patient_category || "critical",
+    status: "pending",
+    activated_at: new Date().toISOString(),
+  });
+
+  if (error)
+    console.error("[EVENT] Insert Failed:", error.message);
+  else
+    console.log(
+      `[EVENT] Emergency Created for ${externalId}`
+    );
+}
+
+async function handleJunctionHealth(externalId, payload) {
+  const device = await findDevice(externalId);
+  if (!device) return;
+
+  await supabase.from("device_health").insert({
+    device_id: device.id,
+    ts: new Date().toISOString(),
+    uptime: payload.uptime_s,
+    rssi: payload.rssi,
+    online: true,
+  });
+
+  await supabase
+    .from("devices")
+    .update({
+      last_seen: new Date().toISOString(),
+      online: true,
+    })
+    .eq("id", device.id);
+}
+
+async function handleHospitalAck(externalId, payload) {
+  if (!payload.event_id) return;
+
+  await supabase.from("notifications").insert({
+    kind: "hospital_ready_ack",
+    payload: {
+      event_id: payload.event_id,
+      device: externalId,
+    },
+  });
+
+  console.log(
+    `[HOSPITAL] ${externalId} acknowledged event ${payload.event_id}`
+  );
+}
+
+async function findDevice(externalId) {
+  const { data, error } = await supabase
+    .from("devices")
+    .select("id,kind,ambulance_id,junction_id,hospital_id")
+    .eq("external_id", externalId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[DEVICE] Lookup Failed:", error.message);
+    return null;
+  }
+
+  return data;
+}

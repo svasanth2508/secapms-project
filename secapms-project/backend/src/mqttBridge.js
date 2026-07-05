@@ -15,10 +15,17 @@ export function startMqttBridge() {
   console.log("PASSWORD LENGTH:", process.env.MQTT_PASSWORD?.length);
   console.log("======================");
 
-  const client = mqtt.connect(process.env.MQTT_URL, {
-    username: process.env.MQTT_USERNAME,
-    password: process.env.MQTT_PASSWORD,
-    clientId: "secapms-backend-" + Math.random().toString(16).slice(2),
+  const client = mqtt.connect({
+    host: "2e3c2cfd53374ed98b4555ed3053dea73.s1.eu.hivemq.cloud",
+    port: 8883,
+    protocol: "mqtts",
+
+    username: "secapms_backend",
+    password: "Backend123!",
+
+    clientId: "test-" + Math.random().toString(16).slice(2),
+
+    clean: true,
     reconnectPeriod: 5000,
   });
 
